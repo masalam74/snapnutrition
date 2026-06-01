@@ -30,6 +30,7 @@ def get_nutrition_by_food_name(food_name):
         "bread": {"calories": 265, "protein_g": 9, "carbs_g": 49, "fat_g": 3.2},
         "naan": {"calories": 120, "protein_g": 4, "carbs_g": 20, "fat_g": 3},
         "beef curry": {"calories": 400, "protein_g": 30, "carbs_g": 10, "fat_g": 25},
+        "avocado": {"calories": 160, "protein_g": 2, "carbs_g": 8.5, "fat_g": 14.7},
     }
     
     food_lower = food_name.lower().strip()
@@ -74,6 +75,8 @@ if 'scan_count' not in st.session_state:
     st.session_state.scan_count = 0
 if 'current_image_bytes' not in st.session_state:
     st.session_state.current_image_bytes = None
+if 'current_file_name' not in st.session_state:
+    st.session_state.current_file_name = None
 
 # ========== CAMERA + UPLOAD OPTIONS ==========
 st.subheader("📷 How would you like to capture your food?")
@@ -87,32 +90,29 @@ input_method = st.radio(
 
 # Track if image has changed
 image_bytes = None
-image_changed = False
+current_file_id = None
 
 if input_method == "📸 Take a photo with camera":
     camera_image = st.camera_input("Point camera at your food", label_visibility="collapsed")
     if camera_image:
         image_bytes = camera_image.getvalue()
         st.image(camera_image, caption="Your meal", width=350)
-        # Check if this is a new image
-        if st.session_state.current_image_bytes != image_bytes:
-            image_changed = True
+        current_file_id = "camera_capture"
 else:
     uploaded_file = st.file_uploader("Upload a food photo", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
     if uploaded_file:
         image_bytes = uploaded_file.getvalue()
         image = Image.open(io.BytesIO(image_bytes))
         st.image(image, caption="Your meal", width=350)
-        # Check if this is a new image
-        if st.session_state.current_image_bytes != image_bytes:
-            image_changed = True
+        current_file_id = uploaded_file.name
 
-# ========== FIX: Clear results when image changes ==========
-if image_changed:
+# ========== FIX: Clear results immediately when new file is selected ==========
+if current_file_id is not None and current_file_id != st.session_state.current_file_name:
+    # New file detected - clear old results immediately
     st.session_state.items_data = None
     st.session_state.edit_mode = False
+    st.session_state.current_file_name = current_file_id
     st.session_state.current_image_bytes = image_bytes
-    st.rerun()
 
 # Process the image
 if image_bytes and st.button("🔍 Analyze Each Food Item", key="analyze_btn", type="primary", use_container_width=True):
@@ -136,8 +136,7 @@ if image_bytes and st.button("🔍 Analyze Each Food Item", key="analyze_btn", t
                                     "text": """Analyze this food image and list EACH food item separately. Return ONLY valid JSON as an array. Example:
 [
     {"food": "biryani", "calories": 350, "protein_g": 12, "carbs_g": 45, "fat_g": 12},
-    {"food": "kebab", "calories": 250, "protein_g": 20, "carbs_g": 5, "fat_g": 16},
-    {"food": "fries", "calories": 150, "protein_g": 2, "carbs_g": 20, "fat_g": 7}
+    {"food": "kebab", "calories": 250, "protein_g": 20, "carbs_g": 5, "fat_g": 16}
 ]
 
 If only one food item, return array with one object. No other text."""
@@ -264,14 +263,14 @@ if st.session_state.items_data:
 
 # Footer
 st.markdown("---")
-st.caption(f"💪 **Free:** {st.session_state.scan_count}/5 scans today | ⭐ **Pro:** €6.99/month (Individual item breakdown)")
+st.caption(f"💪 **Free:** {st.session_state.scan_count}/5 scans today | ⭐ **Pro:** €6.99/month")
 
 with st.sidebar:
     st.header("📱 How to use")
     st.write("**Option 1:** Tap 'Take a photo' and point camera at food")
     st.write("**Option 2:** Upload from gallery")
     st.markdown("---")
-    st.write("🔄 **Auto-Clear:** Old results disappear when you take a new photo")
+    st.write("🔄 **Auto-Clear:** Old results disappear when you select a new photo")
     st.markdown("---")
     st.header("✨ Premium Features")
     st.write("- Individual item breakdown")
