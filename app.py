@@ -10,7 +10,7 @@ st.set_page_config(page_title="SnapNutrition Pro", layout="centered")
 st.title("📸 SnapNutrition Pro")
 st.caption("Take a photo or upload - AI analyzes each food item individually")
 
-# Your Groq API key
+# Your Groq API key (from secrets)
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 client = Groq(api_key=GROQ_API_KEY)
@@ -72,6 +72,8 @@ if 'edit_mode' not in st.session_state:
     st.session_state.edit_mode = False
 if 'scan_count' not in st.session_state:
     st.session_state.scan_count = 0
+if 'current_image_bytes' not in st.session_state:
+    st.session_state.current_image_bytes = None
 
 # ========== CAMERA + UPLOAD OPTIONS ==========
 st.subheader("📷 How would you like to capture your food?")
@@ -83,19 +85,34 @@ input_method = st.radio(
     label_visibility="collapsed"
 )
 
+# Track if image has changed
 image_bytes = None
+image_changed = False
 
 if input_method == "📸 Take a photo with camera":
     camera_image = st.camera_input("Point camera at your food", label_visibility="collapsed")
     if camera_image:
         image_bytes = camera_image.getvalue()
         st.image(camera_image, caption="Your meal", width=350)
+        # Check if this is a new image
+        if st.session_state.current_image_bytes != image_bytes:
+            image_changed = True
 else:
     uploaded_file = st.file_uploader("Upload a food photo", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
     if uploaded_file:
         image_bytes = uploaded_file.getvalue()
         image = Image.open(io.BytesIO(image_bytes))
         st.image(image, caption="Your meal", width=350)
+        # Check if this is a new image
+        if st.session_state.current_image_bytes != image_bytes:
+            image_changed = True
+
+# ========== FIX: Clear results when image changes ==========
+if image_changed:
+    st.session_state.items_data = None
+    st.session_state.edit_mode = False
+    st.session_state.current_image_bytes = image_bytes
+    st.rerun()
 
 # Process the image
 if image_bytes and st.button("🔍 Analyze Each Food Item", key="analyze_btn", type="primary", use_container_width=True):
@@ -253,6 +270,8 @@ with st.sidebar:
     st.header("📱 How to use")
     st.write("**Option 1:** Tap 'Take a photo' and point camera at food")
     st.write("**Option 2:** Upload from gallery")
+    st.markdown("---")
+    st.write("🔄 **Auto-Clear:** Old results disappear when you take a new photo")
     st.markdown("---")
     st.header("✨ Premium Features")
     st.write("- Individual item breakdown")
