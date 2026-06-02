@@ -5,6 +5,7 @@ from groq import Groq
 import json
 import io
 import re
+import requests
 
 st.set_page_config(page_title="SnapNutrition Pro", layout="centered")
 
@@ -16,10 +17,26 @@ GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 client = Groq(api_key=GROQ_API_KEY)
 
+# Google Sheets webhook (from secrets)
+GOOGLE_SHEETS_WEBHOOK = st.secrets["GOOGLE_SHEETS_WEBHOOK"]
+
 # Email validation function
 def is_valid_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
+
+# Save email to Google Sheets
+def save_email_to_sheets(email, scan_count):
+    """Send email to Google Sheets webhook"""
+    try:
+        response = requests.post(
+            GOOGLE_SHEETS_WEBHOOK,
+            json={"email": email, "scan_count": scan_count, "status": "active"},
+            timeout=5
+        )
+        return response.status_code == 200
+    except:
+        return False
 
 # Nutrition database
 def get_nutrition_by_food_name(food_name):
@@ -135,12 +152,17 @@ if st.session_state.scan_count >= 3 and not st.session_state.email_captured and 
         
         if submit_email:
             if is_valid_email(email_input):
-                st.session_state.email = email_input
-                st.session_state.email_captured = True
-                st.session_state.extra_scans_added = True
-                st.session_state.scan_count = max(0, st.session_state.scan_count - 2)
-                st.success("✅ Thanks! 2 extra scans added. You can keep testing!")
-                st.rerun()
+                # Save to Google Sheets via webhook
+                success = save_email_to_sheets(email_input, st.session_state.scan_count)
+                if success:
+                    st.session_state.email = email_input
+                    st.session_state.email_captured = True
+                    st.session_state.extra_scans_added = True
+                    st.session_state.scan_count = max(0, st.session_state.scan_count - 2)
+                    st.success("✅ Thanks! 2 extra scans added. Your email has been saved.")
+                    st.rerun()
+                else:
+                    st.error("Could not save email. Please try again.")
             else:
                 st.error("Please enter a valid email address.")
 
@@ -156,7 +178,7 @@ if st.session_state.scan_count >= 5 and not st.session_state.email_captured:
     2. **Share your email** (above) to get 2 extra free scans
     """)
     
-    # Pro upgrade button
+    # Pro upgrade button (Lemon Squeezy link will go here)
     st.markdown("[🚀 Upgrade to Pro (€6.99/month)](https://buy.stripe.com/your-link-here)")
     
 elif st.session_state.scan_count >= 7:
@@ -247,7 +269,7 @@ if st.session_state.items_data:
             st.rerun()
     
     else:
-        # Edit mode (keep existing logic)
+        # Edit mode - modify individual items
         st.info("✏️ **Edit Mode:** Modify each food item")
         
         updated_items = []
@@ -270,6 +292,7 @@ if st.session_state.items_data:
             with col4:
                 fat = st.number_input(f"Fat", value=int(item.get('fat_g', 0)), key=f"fat_{idx}")
             
+            # Auto-lookup if name changed
             if corrected_food != item.get('food', ''):
                 auto_nut = get_nutrition_by_food_name(corrected_food)
                 if auto_nut:
@@ -288,6 +311,7 @@ if st.session_state.items_data:
             })
             st.markdown("---")
         
+        # Add new item button
         if st.button("➕ Add Another Food Item"):
             updated_items.append({'food': 'New item', 'calories': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0})
             st.session_state.items_data = updated_items
