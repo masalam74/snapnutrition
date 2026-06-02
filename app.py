@@ -4,6 +4,7 @@ import base64
 from groq import Groq
 import json
 import io
+import re
 
 st.set_page_config(page_title="SnapNutrition Pro", layout="centered")
 
@@ -14,6 +15,11 @@ st.caption("Take a photo or upload - AI analyzes each food item individually")
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 client = Groq(api_key=GROQ_API_KEY)
+
+# Email validation function
+def is_valid_email(email):
+    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(pattern, email) is not None
 
 # Nutrition database
 def get_nutrition_by_food_name(food_name):
@@ -77,6 +83,12 @@ if 'current_image_bytes' not in st.session_state:
     st.session_state.current_image_bytes = None
 if 'current_file_name' not in st.session_state:
     st.session_state.current_file_name = None
+if 'email' not in st.session_state:
+    st.session_state.email = None
+if 'email_captured' not in st.session_state:
+    st.session_state.email_captured = False
+if 'extra_scans_added' not in st.session_state:
+    st.session_state.extra_scans_added = False
 
 # ========== CAMERA + UPLOAD OPTIONS ==========
 st.subheader("📷 How would you like to capture your food?")
@@ -106,72 +118,106 @@ else:
         st.image(image, caption="Your meal", width=350)
         current_file_id = uploaded_file.name
 
-# ========== FIX: Clear results immediately when new file is selected ==========
+# Clear results when new file is selected
 if current_file_id is not None and current_file_id != st.session_state.current_file_name:
-    # New file detected - clear old results immediately
     st.session_state.items_data = None
     st.session_state.edit_mode = False
     st.session_state.current_file_name = current_file_id
     st.session_state.current_image_bytes = image_bytes
 
-# Process the image
-if image_bytes and st.button("🔍 Analyze Each Food Item", key="analyze_btn", type="primary", use_container_width=True):
-    if st.session_state.scan_count >= 5:
-        st.warning("⚠️ Free limit reached (5 scans/day). Upgrade to Pro for unlimited scans!")
-        st.markdown("[🚀 Upgrade to Pro (€6.99/month)](https://buy.stripe.com/your-link-here)")
-    else:
-        with st.spinner("🧠 AI identifying each food item..."):
-            try:
-                img_bytes = resize_image_for_api(image_bytes)
-                base64_image = encode_image_to_base64(img_bytes)
-                
-                completion = client.chat.completions.create(
-                    model="meta-llama/llama-4-scout-17b-16e-instruct",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "text", 
-                                    "text": """Analyze this food image and list EACH food item separately. Return ONLY valid JSON as an array. Example:
+# ========== EMAIL CAPTURE (After 3 scans) ==========
+if st.session_state.scan_count >= 3 and not st.session_state.email_captured and not st.session_state.extra_scans_added:
+    st.warning("🎁 You've used 3 scans! Get 2 FREE extra scans by sharing your email.")
+    
+    with st.form(key="email_form"):
+        email_input = st.text_input("Email address:", placeholder="you@example.com")
+        submit_email = st.form_submit_button("Get 2 More Free Scans")
+        
+        if submit_email:
+            if is_valid_email(email_input):
+                st.session_state.email = email_input
+                st.session_state.email_captured = True
+                st.session_state.extra_scans_added = True
+                st.session_state.scan_count = max(0, st.session_state.scan_count - 2)
+                st.success("✅ Thanks! 2 extra scans added. You can keep testing!")
+                st.rerun()
+            else:
+                st.error("Please enter a valid email address.")
+
+# ========== SCREENING FOR SCAN LIMIT ==========
+scan_blocked = False
+if st.session_state.scan_count >= 5 and not st.session_state.email_captured:
+    scan_blocked = True
+    st.warning("⚠️ Free limit reached (5 scans).")
+    
+    st.info("💡 **Ways to continue:**")
+    st.markdown("""
+    1. **Upgrade to Pro (€6.99/month)** → Unlimited scans + individual item breakdown
+    2. **Share your email** (above) to get 2 extra free scans
+    """)
+    
+    # Pro upgrade button
+    st.markdown("[🚀 Upgrade to Pro (€6.99/month)](https://buy.stripe.com/your-link-here)")
+    
+elif st.session_state.scan_count >= 7:
+    scan_blocked = True
+    st.error("🔴 Free limit reached (7 scans). Please upgrade to Pro to continue.")
+    st.markdown("[🚀 Upgrade to Pro (€6.99/month)](https://buy.stripe.com/your-link-here)")
+
+# ========== PROCESS IMAGE ==========
+if image_bytes and not scan_blocked and st.button("🔍 Analyze Each Food Item", key="analyze_btn", type="primary", use_container_width=True):
+    with st.spinner("🧠 AI identifying each food item..."):
+        try:
+            img_bytes = resize_image_for_api(image_bytes)
+            base64_image = encode_image_to_base64(img_bytes)
+            
+            completion = client.chat.completions.create(
+                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text", 
+                                "text": """Analyze this food image and list EACH food item separately. Return ONLY valid JSON as an array. Example:
 [
     {"food": "biryani", "calories": 350, "protein_g": 12, "carbs_g": 45, "fat_g": 12},
     {"food": "kebab", "calories": 250, "protein_g": 20, "carbs_g": 5, "fat_g": 16}
 ]
 
 If only one food item, return array with one object. No other text."""
-                                },
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    }
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{base64_image}"
                                 }
-                            ]
-                        }
-                    ],
-                    temperature=0.1,
-                    max_tokens=500
-                )
+                            }
+                        ]
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=500
+            )
+            
+            result_text = completion.choices[0].message.content
+            result_text = result_text.replace('```json', '').replace('```', '').strip()
+            
+            try:
+                items = json.loads(result_text)
+                if isinstance(items, dict):
+                    items = [items]
+                st.session_state.items_data = items
+                st.session_state.scan_count += 1
+                st.rerun()
+            except json.JSONDecodeError:
+                st.write("Raw response:", result_text)
+                st.info("AI couldn't parse. Try clearer photo with distinct items.")
                 
-                result_text = completion.choices[0].message.content
-                result_text = result_text.replace('```json', '').replace('```', '').strip()
-                
-                try:
-                    items = json.loads(result_text)
-                    if isinstance(items, dict):
-                        items = [items]
-                    st.session_state.items_data = items
-                    st.session_state.scan_count += 1
-                    st.rerun()
-                except json.JSONDecodeError:
-                    st.write("Raw response:", result_text)
-                    st.info("AI couldn't parse. Try clearer photo with distinct items.")
-                    
-            except Exception as e:
-                st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
-# Display individual items
+# ========== DISPLAY RESULTS ==========
 if st.session_state.items_data:
     items = st.session_state.items_data
     
@@ -201,7 +247,7 @@ if st.session_state.items_data:
             st.rerun()
     
     else:
-        # Edit mode - modify individual items
+        # Edit mode (keep existing logic)
         st.info("✏️ **Edit Mode:** Modify each food item")
         
         updated_items = []
@@ -224,7 +270,6 @@ if st.session_state.items_data:
             with col4:
                 fat = st.number_input(f"Fat", value=int(item.get('fat_g', 0)), key=f"fat_{idx}")
             
-            # Auto-lookup if name changed
             if corrected_food != item.get('food', ''):
                 auto_nut = get_nutrition_by_food_name(corrected_food)
                 if auto_nut:
@@ -243,7 +288,6 @@ if st.session_state.items_data:
             })
             st.markdown("---")
         
-        # Add new item button
         if st.button("➕ Add Another Food Item"):
             updated_items.append({'food': 'New item', 'calories': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0})
             st.session_state.items_data = updated_items
@@ -263,14 +307,14 @@ if st.session_state.items_data:
 
 # Footer
 st.markdown("---")
-st.caption(f"💪 **Free:** {st.session_state.scan_count}/5 scans today | ⭐ **Pro:** €6.99/month")
+st.caption(f"💪 **Free scans used:** {st.session_state.scan_count}/5 today | ⭐ **Pro:** €6.99/month unlimited")
 
 with st.sidebar:
     st.header("📱 How to use")
     st.write("**Option 1:** Tap 'Take a photo' and point camera at food")
     st.write("**Option 2:** Upload from gallery")
     st.markdown("---")
-    st.write("🔄 **Auto-Clear:** Old results disappear when you select a new photo")
+    st.write("🎁 **Get extra free scans:** Share your email after 3 scans")
     st.markdown("---")
     st.header("✨ Premium Features")
     st.write("- Individual item breakdown")
@@ -278,4 +322,6 @@ with st.sidebar:
     st.write("- Add/remove food items")
     st.write("- Unlimited scans")
     st.markdown("---")
+    if st.session_state.email:
+        st.success(f"📧 Email saved: {st.session_state.email}")
     st.caption("Made with ❤️ - Your AI Nutritionist")
