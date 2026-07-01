@@ -349,15 +349,30 @@ with st.sidebar:
     if st.session_state.email:
         st.success(f"📧 Email saved: {st.session_state.email}")
     st.caption("Made with ❤️ - Your AI Nutritionist")
-   # Force hide Streamlit deployment info
+# At the very bottom of your app.py
 hide_streamlit_style = """
     <style>
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important;}
-    header {visibility: hidden !important;}
-    .stDeployButton {display:none !important;}
-    .css-1lsmgbg {display:none !important;}
-    .viewerBadge_container__1QSob {display:none !important;}
+    /* Hide all typical Streamlit branding */
+    #MainMenu {display: none !important;}
+    footer {display: none !important;}
+    header {display: none !important;}
+    .stDeployButton {display: none !important;}
+    .stAppDeployButton {display: none !important;}
+    .css-1lsmgbg {display: none !important;}
+    .viewerBadge_container__1QSob {display: none !important;}
+    .st-emotion-cache-1lsmgbg {display: none !important;}
+
+    /* Specifically target the footer element */
+    .st-emotion-cache-1lsmgbg {display: none !important;}
+
+    /* Mobile specific overrides */
+    @media (max-width: 768px) {
+        footer {display: none !important;}
+        .stDeployButton {display: none !important;}
+        .stAppDeployButton {display: none !important;}
+        .st-emotion-cache-1lsmgbg {display: none !important;}
+        .viewerBadge_container__1QSob {display: none !important;}
+    }
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
