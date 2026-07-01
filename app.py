@@ -7,28 +7,36 @@ import io
 import re
 import requests
 
+# ========== PAGE CONFIG MUST BE FIRST ==========
 st.set_page_config(page_title="SnapNutrition Pro", layout="centered")
 
+# ========== HIDE STREAMLIT BRANDING (GitHub Icon, Footer, Menu) ==========
+hide_streamlit_style = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display: none;}
+    .stAppDeployButton {display: none;}
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 st.title("📸 SnapNutrition Pro")
 st.caption("Take a photo or upload - AI analyzes each food item individually")
 
-# Your Groq API key (from secrets)
+# ========== API KEYS FROM SECRETS ==========
 GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-
 client = Groq(api_key=GROQ_API_KEY)
 
-# Google Sheets webhook (from secrets)
 GOOGLE_SHEETS_WEBHOOK = st.secrets["GOOGLE_SHEETS_WEBHOOK"]
 
-# Email validation function
+# ========== EMAIL VALIDATION ==========
 def is_valid_email(email):
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
 
-# Save email to Google Sheets
 def save_email_to_sheets(email, scan_count):
-    """Send email to Google Sheets webhook"""
     try:
         response = requests.post(
             GOOGLE_SHEETS_WEBHOOK,
@@ -39,7 +47,7 @@ def save_email_to_sheets(email, scan_count):
     except:
         return False
 
-# Nutrition database
+# ========== NUTRITION DATABASE ==========
 def get_nutrition_by_food_name(food_name):
     nutrition_db = {
         "apple": {"calories": 95, "protein_g": 0.5, "carbs_g": 25, "fat_g": 0.3},
@@ -58,16 +66,14 @@ def get_nutrition_by_food_name(food_name):
     }
     
     food_lower = food_name.lower().strip()
-    
     if food_lower in nutrition_db:
         return nutrition_db[food_lower]
-    
     for key, value in nutrition_db.items():
         if key in food_lower:
             return value
-    
     return None
 
+# ========== IMAGE PROCESSING ==========
 def resize_image_for_api(image_bytes):
     image = Image.open(io.BytesIO(image_bytes))
     width, height = image.size
@@ -90,7 +96,7 @@ def resize_image_for_api(image_bytes):
 def encode_image_to_base64(image_bytes):
     return base64.b64encode(image_bytes).decode('utf-8')
 
-# Initialize session state
+# ========== SESSION STATE ==========
 if 'items_data' not in st.session_state:
     st.session_state.items_data = None
 if 'edit_mode' not in st.session_state:
@@ -108,7 +114,7 @@ if 'email_captured' not in st.session_state:
 if 'extra_scans_added' not in st.session_state:
     st.session_state.extra_scans_added = False
 
-# ========== CAMERA + UPLOAD OPTIONS ==========
+# ========== CAMERA + UPLOAD ==========
 st.subheader("📷 How would you like to capture your food?")
 
 input_method = st.radio(
@@ -118,7 +124,6 @@ input_method = st.radio(
     label_visibility="collapsed"
 )
 
-# Track if image has changed
 image_bytes = None
 current_file_id = None
 
@@ -153,7 +158,6 @@ if st.session_state.scan_count >= 3 and not st.session_state.email_captured and 
         
         if submit_email:
             if is_valid_email(email_input):
-                # Save to Google Sheets via webhook
                 success = save_email_to_sheets(email_input, st.session_state.scan_count)
                 if success:
                     st.session_state.email = email_input
@@ -167,19 +171,16 @@ if st.session_state.scan_count >= 3 and not st.session_state.email_captured and 
             else:
                 st.error("Please enter a valid email address.")
 
-# ========== SCREENING FOR SCAN LIMIT ==========
+# ========== SCAN LIMIT ==========
 scan_blocked = False
 if st.session_state.scan_count >= 5 and not st.session_state.email_captured:
     scan_blocked = True
     st.warning("⚠️ Free limit reached (5 scans).")
-    
     st.info("💡 **Ways to continue:**")
     st.markdown("""
     1. **Upgrade to Pro (€6.99/month)** → Unlimited scans + individual item breakdown
     2. **Share your email** (above) to get 2 extra free scans
     """)
-    
-    # Pro upgrade button (Lemon Squeezy link will go here)
     st.markdown("[🚀 Upgrade to Pro (€6.99/month)](https://buy.stripe.com/your-link-here)")
     
 elif st.session_state.scan_count >= 7:
@@ -270,7 +271,6 @@ if st.session_state.items_data:
             st.rerun()
     
     else:
-        # Edit mode - modify individual items
         st.info("✏️ **Edit Mode:** Modify each food item")
         
         updated_items = []
@@ -293,7 +293,6 @@ if st.session_state.items_data:
             with col4:
                 fat = st.number_input(f"Fat", value=int(item.get('fat_g', 0)), key=f"fat_{idx}")
             
-            # Auto-lookup if name changed
             if corrected_food != item.get('food', ''):
                 auto_nut = get_nutrition_by_food_name(corrected_food)
                 if auto_nut:
@@ -312,7 +311,6 @@ if st.session_state.items_data:
             })
             st.markdown("---")
         
-        # Add new item button
         if st.button("➕ Add Another Food Item"):
             updated_items.append({'food': 'New item', 'calories': 0, 'protein_g': 0, 'carbs_g': 0, 'fat_g': 0})
             st.session_state.items_data = updated_items
@@ -330,7 +328,7 @@ if st.session_state.items_data:
                 st.session_state.edit_mode = False
                 st.rerun()
 
-# Footer
+# ========== FOOTER ==========
 st.markdown("---")
 st.caption(f"💪 **Free scans used:** {st.session_state.scan_count}/5 today | ⭐ **Pro:** €6.99/month unlimited")
 
@@ -350,14 +348,3 @@ with st.sidebar:
     if st.session_state.email:
         st.success(f"📧 Email saved: {st.session_state.email}")
     st.caption("Made with ❤️ - Your AI Nutritionist")
-import streamlit as st
-
-hide_streamlit_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            footer {visibility: hidden;}
-            header {visibility: hidden;}
-            </style>
-            """
-st.markdown(hide_streamlit_style, unsafe_allow_html=True)
-
