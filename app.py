@@ -349,13 +349,15 @@ with st.sidebar:
     if st.session_state.email:
         st.success(f"📧 Email saved: {st.session_state.email}")
     st.caption("Made with ❤️ - Your AI Nutritionist")
-    # ========== HIDE STREAMLIT FOOTER ==========
+   # Force hide Streamlit deployment info
 hide_streamlit_style = """
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stDeployButton {display:none;}
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
+    .stDeployButton {display:none !important;}
+    .css-1lsmgbg {display:none !important;}
+    .viewerBadge_container__1QSob {display:none !important;}
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
