@@ -8,6 +8,18 @@ import re
 import requests
 
 st.set_page_config(page_title="SnapNutrition Pro", layout="centered")
+# ================= CUSTOM CSS TO HIDE STREAMLIT BRANDING & GITHUB LINKS =================
+st.markdown(
+    """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+# ========================================================================================
 
 st.title("📸 SnapNutrition Pro")
 st.caption("Take a photo or upload - AI analyzes each food item individually")
